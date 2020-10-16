@@ -11,7 +11,7 @@ import socket
 import json
 
 
-
+DEBUG=False
 
 
 # socket Interface 초기화
@@ -50,7 +50,7 @@ def get_recog_result_json(list_ETRIFace, nBiggestIndex, nSocialActionCode):
                 },
                 "glasses": False,
                 "social_action": nSocialActionCode,
-                "gaze": nInterested,
+                "gaze": -1,
                 "name": "",
                 "longterm_tendency": -1,
                 "lognterm_habit": -1
@@ -63,7 +63,7 @@ def get_recog_result_json(list_ETRIFace, nBiggestIndex, nSocialActionCode):
 
 def main():
     # HOST = "129.254.90.89"
-    HOST = "192.168.0.2"
+    HOST = "127.0.0.1"
     PORT = 9999
 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -105,7 +105,8 @@ def main():
 
         # main process start
         frame = cv2.flip(frame, 1)
-        img_show = copy.deepcopy(frame)
+        if DEBUG is True:
+            img_show = copy.deepcopy(frame)
 
         # Action Recognition
         #######################
@@ -125,19 +126,22 @@ def main():
             if len(EAR.vAllX) == EAR.nViewFrame * EAR.nNumJoint:
                 # get converted feature map
                 convertedImg = EAR.convertToActionArr()
-                nTempAction = EAR.EAR_BodyAction_Estimation(BodyAction_Net, convertedImg)
-                EAR.updateAction(nTempAction)
-                sActionResult = EAR.getTopNAction(1, convertedImg)
+                
+                # 20.10.05. update. change hand action model
+                nBodyAction = EAR.EAR_BodyAction_Estimation(BodyAction_Net, convertedImg)
 
-                #### edit from here. return format / index / result string etc...
-                if sActionResult.split(" ")[0] == "handaction":
-                    hand_patch, _, checkVal = EAR.getHandPatch(frame, vInputJointX, vInputJointY)
+                if nBodyAction == 1:
+                    Lhand_patch, Rhand_patch, checkVal = EAR.getHandPatch(frame, vInputJointX, vInputJointY)
 
                     if checkVal == 0:
-                        sActionResult = EAR.getHandActionStr(HandAction_Net, hand_patch)
-
+                        # cv2.imshow("TaaaT", Rhand_patch)
+                        nHandAction = EAR.getHandActionIdx(HandAction_Net, Rhand_patch)
+                        EAR.updateAction(nHandAction)
                 else:
-                    EAR.updateAction(nTempAction)
+                    EAR.updateAction(nBodyAction)
+
+                sActionResult = EAR.getTopNAction(1)
+                
                 print(sActionResult)
                 nSocialActionCode = EAR.getSocialActionIndex(sActionResult)
 
@@ -159,9 +163,9 @@ def main():
             jsonString = get_recog_result_json(list_ETRIFace, nBiggestIndex, nSocialActionCode)
             client_socket.send(jsonString.encode())
 
-
-        cv2.imshow("TT", img_show)
-        nKey = cv2.waitKey(1)
+        if DEBUG is True:
+            cv2.imshow("TT", img_show)
+            nKey = cv2.waitKey(1)
 
         ##########################################################################
         # # 인식 결과 출력
