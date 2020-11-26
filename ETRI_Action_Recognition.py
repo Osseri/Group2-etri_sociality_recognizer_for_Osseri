@@ -33,11 +33,16 @@ from scipy.spatial.distance import euclidean
 vAllX = []
 vAllY = []
 nViewFrame = 5
-nCheckFrame = nViewFrame * 3
+
+# 201026.
+# nCheckFrame = nViewFrame * 3
+nCheckFrame = nViewFrame * 4
+
 fActionArr = [0 for _ in range(nCheckFrame)]
 fActionProb = []
 nNumJoint = 9
 nNumAction = 15
+
 
 class ETRIFace:
     def __init__(self):
@@ -79,7 +84,7 @@ def ETRI_Initialization(path):
 
     print("hand action start")
     model_trt_ha = TRTModule()
-    model_path = os.path.join(path, 'handaction_jc_TRT.pth')
+    model_path = os.path.join(path, 'handaction_jc_c_TRT.pth')
     model_trt_ha.load_state_dict(torch.load(model_path))
    
     return topology, parse_objects, model_skeleton, model_trt_ba, model_trt_ha
@@ -289,7 +294,22 @@ def EAR_BodyAction_Estimation(BA_Net, convertedImg):
     _, output = BA_Net(torch_input)
     output_np = output.cpu().detach().numpy().squeeze().tolist()
 
-    return output_np.index(max(output_np))
+    # 201026.
+    # return output_np.index(max(output_np))
+    nBodyActionIdx = output_np.index(max(output_np))
+    if nBodyActionIdx == 1:
+        M = math.fabs(vAllX[nNumJoint * (nViewFrame - 1) + 2] - vAllX[nNumJoint * (nViewFrame - 1) + 5]) * 0.2
+        L = vAllX[nNumJoint * (nViewFrame - 1) + 8]
+        R = vAllX[nNumJoint * (nViewFrame - 1) + 6] + M
+        T = (vAllY[nNumJoint * (nViewFrame - 1) + 1] + vAllY[nNumJoint * (nViewFrame - 1) + 8]) / 2 - (M * 2)
+        B = vAllY[nNumJoint * (nViewFrame - 1) + 8]
+        X = vAllX[nNumJoint * (nViewFrame - 1) + 7]
+        Y = vAllY[nNumJoint * (nViewFrame - 1) + 7]
+        if L < X and X < R:
+            if T < Y and Y < B:
+                return 10
+
+    return nBodyActionIdx
 
 
 def updateAction(nAction):
@@ -300,7 +320,8 @@ def updateAction(nAction):
 
 sAction = ["foldarms", "handaction","neutral", "pickear", "restchin", "scratch", "waving", "fighting", "thumbchuck", "bitenail", "shakehand", "fingerok", "fingerheart", "covermouth", "touchnose", "bowing"]
 def getTopNAction(nTopN):
-    global fActionProb, fActionArr, nCheckFrame, nNumAction, sAction
+    # global fActionProb, fActionArr, nCheckFrame, nNumAction, sAction
+    global fActionProb, fActionArr, nCheckFrame, nNumAction, sAction, nPrevAction
 
     if nTopN > nNumAction:
         return "nTopN is out of scope."
@@ -328,6 +349,11 @@ def getTopNAction(nTopN):
         sActionNProb = "{sAction} : {fProb:0.1f} / ".format(sAction=sAction[fActionProb[ii][1]]
                                                          , fProb=fActionProb[ii][0]*100)
         sTopN  = sTopN + sActionNProb
+
+    # 201026.
+    # return sTopN
+    if fActionProb[0][0] < 0.9:
+        sTopN = "Switching behavior"
 
     return sTopN
 
@@ -448,6 +474,9 @@ def getHandActionIdx(HA_Net, handPatchImg):
 
 
 def getSocialActionIndex(sActionResult):
+    if sActionResult == "Switching behavior":
+        return -1
+
     sSocialActionList = ["bitenail", "covermouth", "fighting", "fingerheart", "fingerok",
     "foldarms", "neutral", "pickear", "restchin", "scratch",
     "shakehand", "thumbchuck", "touchnose", "waving", "bowing"]
